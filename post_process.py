@@ -71,19 +71,58 @@ for t in range(t_end):
 # TDR, FAR = compute_detection_and_alarm_rates(conf_matrix)
 
 
-# # # # # # # # Plot results for one test data # # # # # # # #
-test_data = torch.load('data/test_data.pt')
-sys_input, sys_output_f, r_labels           = generate_faulty_test_data(test_data, 900, 1000,
-                                                                            'first sensor fault')
-t_end           = sys_output_f.shape[1]
-rs              = [torch.zeros(fault_signal.shape[0], t_end) for _ in range(4)]
-states          = [torch.zeros(FD.n_states) for FD in FDs]
 
-for t in range(t_end):
-    FD_input = torch.cat((sys_input[:, t], sys_output_f[:, t]))
-    for i, FD in enumerate(FDs):
-        r, states[i] = FD(FD_input, states[i])
-        rs[i][:, t] = r.detach()
+# # # # # # # # Compute mean of RMSE over 1000 test data # # # # # # # #
+test_data   = torch.load('data/test_data.pt')
+classes     = ['first sensor fault', 'second sensor fault', 'both sensors fault']
+# List to store RMSE values for each class over all trials
+rmse_storage = {c: [] for c in classes}
+for d in range(1000):
+    for c in classes:
+        sys_input, sys_output_f, r_labels = generate_faulty_test_data(test_data, 900, 1000,c)
+        t_end   = sys_output_f.shape[1]
+        rs      = [torch.zeros(fault_signal.shape[0], t_end) for _ in range(4)]
+        states  = [torch.zeros(FD.n_states) for FD in FDs]
+
+        for t in range(t_end):
+            FD_input = torch.cat((sys_input[:, t], sys_output_f[:, t]))
+            for i, FD in enumerate(FDs):
+                r, states[i]    = FD(FD_input, states[i])
+                rs[i][:, t]     = r.detach()
+        # Convert rs to a tensor of shape (4, batch_size, time)
+        rs_tensor   = torch.stack(rs)  # Shape: (4, batch_size, time)
+        # Ensure r_labels has the same shape
+        r_labels    = torch.stack(r_labels)
+        rmse        = torch.sqrt(torch.mean((rs_tensor - r_labels) ** 2, dim=2))
+
+        mean_rmse_per_trial = rmse.squeeze(1)
+
+        # Store RMSE for this trial
+        rmse_storage[c].append(mean_rmse_per_trial)
+
+# Compute final mean RMSE over all trials for each class
+final_mean_rmse = {c: torch.mean(torch.stack(rmse_storage[c]), dim=0) for c in classes}
+
+# Convert to lists for easy access
+final_mean_rmse_lists = {c: final_mean_rmse[c].tolist() for c in classes}
+
+# Print the results
+for c in classes:
+    print(f"Mean RMSE for {c}: {final_mean_rmse_lists[c]}")
+
+# # # # # # # # Plot results for one test data # # # # # # # #
+# sys_input, sys_output_f, r_labels           = generate_faulty_test_data(test_data, 900, 1000,
+#                                                                             'first sensor fault')
+# t_end           = sys_output_f.shape[1]
+# rs              = [torch.zeros(fault_signal.shape[0], t_end) for _ in range(4)]
+# states          = [torch.zeros(FD.n_states) for FD in FDs]
+#
+# for t in range(t_end):
+#     FD_input = torch.cat((sys_input[:, t], sys_output_f[:, t]))
+#     for i, FD in enumerate(FDs):
+#         r, states[i] = FD(FD_input, states[i])
+#         rs[i][:, t] = r.detach()
+
 # for i, FD in enumerate(FDs):
 #     if i > 1:
 #         ylebel = '[m]'
@@ -95,11 +134,11 @@ for t in range(t_end):
 #                      + "_trained.pt", save=False)
 
 
-plot_all_results(t_end, r_labels, rs, 'Residuals of FDs',
-                     "epochs_ %i" % epochs + "_gamma_ %i" % gamma_save + "_q_ %i" % q + "_beta_ %i" % beta
-                     + "_t_init_ %i" % t_init + "_state_size_ %i" % FD_n_states + "_nl_size_ %i" % FD_n_nl
-                     + "_trained.pt", save=True)
-
-
-input("Press Enter to close the plot and end the script...")
+# plot_all_results(t_end, r_labels, rs, 'Residuals of FDs',
+#                      "epochs_ %i" % epochs + "_gamma_ %i" % gamma_save + "_q_ %i" % q + "_beta_ %i" % beta
+#                      + "_t_init_ %i" % t_init + "_state_size_ %i" % FD_n_states + "_nl_size_ %i" % FD_n_nl
+#                      + "_trained.pt", save=True)
+#
+#
+# input("Press Enter to close the plot and end the script...")
 
